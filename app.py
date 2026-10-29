@@ -188,8 +188,12 @@ def imap_search_ids(client, criteria: list[str]) -> list[bytes]:
     return data[0].split() if data[0] else []
 
 def fetch_header(client, msg_id: bytes) -> dict:
-    fields = b"(SUBJECT FROM TO CC BCC DATE MESSAGE-ID)"
-    typ, data = client.fetch(msg_id, b"(BODY.PEEK[HEADER.FIELDS " + fields + b"] FLAGS)")
+    # Python 3.14 imaplib expects string command arguments, not bytes.
+    message_set = msg_id.decode("ascii") if isinstance(msg_id, bytes) else str(msg_id)
+    typ, data = client.fetch(
+        message_set,
+        "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM TO CC BCC DATE MESSAGE-ID)] FLAGS)"
+    )
     if typ != "OK" or not data:
         return {}
     raw = b""
@@ -261,7 +265,8 @@ def fetch_attachment_payload(part: Message) -> tuple[str, bytes, str]:
 
 def fetch_full_email(uid: str) -> tuple[Message, list[dict]]:
     client = ensure_connection()
-    typ, data = client.fetch(uid.encode(), b"(BODY.PEEK[])")
+    # Keep imaplib arguments as strings for Python 3.14 compatibility.
+    typ, data = client.fetch(str(uid), "(BODY.PEEK[])")
     if typ != "OK" or not data:
         raise RuntimeError("Could not retrieve this email. The connection may have expired.")
     raw = b""
@@ -356,10 +361,10 @@ with st.sidebar:
     if env_available:
         st.success("Credentials loaded from environment")
     else:
-        st.caption("Use a Google App Password. Your normal Google password may not work.")
+        st.caption("Credentials are used for IMAP mailbox access. They must also be valid for Gmail IMAP authentication.")
     with st.form("login_form", clear_on_submit=False):
-        email_user = st.text_input("Workspace email", value=st.session_state.email_user, placeholder="you@company.com")
-        email_pass = st.text_input("App Password", value=st.session_state.email_pass, type="password", placeholder="16-character app password")
+        email_user = st.text_input("SMTP User (SMTP_USER)", value=st.session_state.email_user, placeholder="SMTP username")
+        email_pass = st.text_input("SMTP Password (SMTP_PASS)", value=st.session_state.email_pass, type="password", placeholder="SMTP password")
         submitted = st.form_submit_button("Connect securely", use_container_width=True)
     if submitted:
         logout()
@@ -402,7 +407,7 @@ with st.sidebar:
 st.markdown("# Email Explorer")
 st.markdown("Search, audit and export mailbox metadata without downloading the entire mailbox.")
 if st.session_state.imap is None:
-    st.info("Connect your Google Workspace account from the sidebar to begin. Enable IMAP in Gmail settings and use a Google App Password if 2-Step Verification is enabled.")
+    st.info("Enter SMTP_USER and SMTP_PASS in the sidebar to begin. These values are used to authenticate to Gmail IMAP, so they must be valid for IMAP access as well. Enable IMAP and use a Google App Password if required by your account.")
     st.stop()
 
 # Search controls
